@@ -152,12 +152,21 @@ const char * StripPath(const char * path)
         return path;
 }
 #if 1
-//VOID save_state(int * counter) 
+//VOID save_state(void * counter,ADDRINT r) 
 VOID save_state() //save the state to a file. Function is called automatically whenever a dummy save() is called from the loaded application
 {
-	//printf("saving state %d\n",*counter);
-printf("saving state\n");
+	//printf("saving state %p %x\n",counter,r);
+	printf("saving state\n");
 }
+
+VOID restore_state(ADDRINT s) //restore memory state to state s
+{
+	int st_n = (int)s;
+	//printf("saving state %p %x\n",counter,r);
+	printf("restoring state: %d\n",st_n);
+}
+
+
 #endif
 
     
@@ -169,15 +178,28 @@ VOID Routine(RTN rtn, VOID *v)
     string _image;
     _name = RTN_Name(rtn);
     _image = StripPath(IMG_Name(SEC_Img(RTN_Sec(rtn))).c_str());
+    ADDRINT _address = RTN_Address(rtn);
      RTN_Open(rtn);
 	//int dummy=0;
 	//printf(">>>>>procedure:[%s][%s][%s][%d][%d]\n",_name.c_str(),_image.c_str(),bin_name,strcmp(_name.c_str(),"save"),strcmp(_image.c_str(),bin_name));	
 	if(strcmp(_name.c_str(),"save")==0 && strcmp(_image.c_str(),bin_name)==0)
 	{
-		printf("procedure matched:[%s][%s]\n",_name.c_str(),_image.c_str());	
+		printf("procedure matched:[%s][%s][%x]\n",_name.c_str(),_image.c_str(),_address);	
 		RTN_InsertCall(rtn, IPOINT_BEFORE, (AFUNPTR)save_state, IARG_END);
+ //       RTN_InsertCall(rtn, IPOINT_BEFORE, (AFUNPTR)save_state, IARG_PTR, v,IARG_END);
+
 
 	}
+	
+	if(strcmp(_name.c_str(),"restore")==0 && strcmp(_image.c_str(),bin_name)==0)
+	{
+		printf("procedure matched:[%s][%s][%x]\n",_name.c_str(),_image.c_str(),_address);	
+		//RTN_InsertCall(rtn, IPOINT_BEFORE, (AFUNPTR)save_state, IARG_END);
+        RTN_InsertCall(rtn, IPOINT_BEFORE, (AFUNPTR)restore_state,IARG_FUNCARG_ENTRYPOINT_VALUE, 0,IARG_END);
+
+
+	}
+	
 	RTN_Close(rtn);
 
 }
