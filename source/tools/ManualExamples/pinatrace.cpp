@@ -43,6 +43,8 @@ END_LEGAL */
 #include <fstream>
 #include <iomanip>
 #include <string.h>
+#include <stdlib.h>
+
 #include "pin.H"
 //#include "mm_struct.h"
 #include "ll_list.h"
@@ -55,6 +57,8 @@ FILE * trace;// = fopen("pinatrace.out", "w");
 const char *bin_name;
 static VOID * WriteAddr; 
 static INT32 WriteSize;
+int savePointer = 0;
+int state_number=0;
 
 /* ===================================================================== */
 /* Commandline Switches */
@@ -125,12 +129,17 @@ static VOID EmitMem(VOID * ea, INT32 size)
 
 static VOID RecordMem(VOID * ip, CHAR r, VOID * addr, INT32 size, BOOL isPrefetch)
 {
-    TraceFile << ip << ": " << r << " " << setw(2+2*sizeof(ADDRINT)) << addr << " "
-              << dec << setw(2) << size << " "
-              << hex << setw(2+2*sizeof(ADDRINT));
-    if (!isPrefetch)
-        EmitMem(addr, size);
-    TraceFile << endl;
+	unsigned int ipp = (int)(&ip);
+	unsigned int address = (int)addr;
+
+	if (ipp != address){
+		TraceFile << ip << ": " << r << " " << setw(2+2*sizeof(ADDRINT)) << addr << " "
+		          << dec << setw(2) << size << " "
+		          << hex << setw(2+2*sizeof(ADDRINT));
+		if (!isPrefetch)
+		    EmitMem(addr, size);
+		TraceFile << endl;
+	}
 }
 int get_type(int size) //dummy, fill it out
 {
@@ -140,7 +149,7 @@ int get_type(int size) //dummy, fill it out
 
 int get_state() //dummy, fill it out
 {
-	return 0;
+	return state_number;
 }
 
 const char * StripPath(const char * path)
@@ -151,19 +160,103 @@ const char * StripPath(const char * path)
     else
         return path;
 }
+
+char *itoa(int number){
+	char *fileName = (char*)malloc(2);
+	
+	fileName[1] = 0;
+	fileName[0] = '0' + number;
+
+	return fileName;
+}
+
 #if 1
 //VOID save_state(void * counter,ADDRINT r) 
 VOID save_state() //save the state to a file. Function is called automatically whenever a dummy save() is called from the loaded application
 {
 	//printf("saving state %p %x\n",counter,r);
 	printf("saving state\n");
+
+	if (1){
+		FILE *fp = fopen(itoa(state_number), "w");
+		vm* current = head;
+		while (current != NULL){
+			if (current->state == state_number){
+				fprintf(fp,"%x %d %d\n", current->ml, current->val, current->state);
+			}
+			current = current->next;
+		}
+		fclose(fp);
+		savePointer++;
+	}
+    //head_state = curr;
+	state_number++;
+}
+
+void applyRestoreFromFile(FILE *file){
+	unsigned int address;
+	int data, state;
+
+	if (fscanf(fp,"%x %d %d", &address, &data, &state) != EOF){
+		int *p = (int*)address;
+
+		printf("%x  %d\n", address, data);
+		*p = data;
+		printf("%x  %d\n", address, data);
+
+		applyRestoreFromFile(file);
+
+	}
 }
 
 VOID restore_state(ADDRINT s) //restore memory state to state s
 {
+	unsigned int address;
+	int data, state;
+	
 	int st_n = (int)s;
 	//printf("saving state %p %x\n",counter,r);
 	printf("restoring state: %d\n",st_n);
+
+	for (int t = state_number-1; t >= st_n; t--){
+		char fileName[2] = "";
+		fileName[0] = '0' + t;
+		fileName[1] = 0;
+
+		printf("Reading restore point file %s\n", fileName);
+
+		FILE *fp = fopen(fileName, "r");
+
+		if (fp == NULL){
+			printf("file couldn't be opened\n");
+		}	
+		else{
+			printf("file pointer = %p\n", fp);
+			while (fscanf(fp,"%x %d %d", &address, &data, &state) != EOF){
+				int *p = (int*)address;
+				*p = data;
+			}
+			//applyRestoreFromFile(fp);
+
+			fclose(fp);
+		}
+	}
+
+	//printf("saving state %p %x\n",counter,r);
+	/*if (1){
+		vm* current = head;
+		while (current != NULL && current->state < st_n) current = current->next;
+
+		if (current != NULL){
+			printf("%x\n", current->ml);
+		}
+
+		while (current != NULL){
+			char *p = (char*)current->ml;
+			*p = current->val;
+			current = current->next;
+		}
+	}*/
 }
 
 
@@ -315,7 +408,7 @@ int main(int argc, char *argv[])
     }
     
 	bin_name = StripPath(argv[argc-1]);
-    printf("bin name: %s\n",bin_name);
+    printf(">>bin name: %s\n",bin_name);
     trace = fopen("pinatrace2.out", "w");
 
     TraceFile.open(KnobOutputFile.Value().c_str());
